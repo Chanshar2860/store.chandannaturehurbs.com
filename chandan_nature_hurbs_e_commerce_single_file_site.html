@@ -1,0 +1,250 @@
+<!--
+ChandanNatureHurbs e‑commerce single-file template
+How to use:
+1) Save this file as index.html
+2) Host on Netlify / Vercel / any static host. For Netlify/Vercel drag-and-drop or connect repo.
+3) Point your subdomain store.chandannaturehurbs.com to the host:
+   - Netlify: create site, then set CNAME for 'store' -> <your-netlify-subdomain>.netlify.app
+   - Vercel: create project, set CNAME for 'store' -> <your-vercel-alias>.vercel.app
+   - Or add A records (if host gives IPs)
+4) SSL: Netlify/Vercel auto-provision Let’s Encrypt.
+5) For payments: this template uses Stripe Checkout (client-side redirect). You must implement a small server endpoint to create Checkout Sessions. See comments below.
+6) Replace sample products (in the `products` array) with your real products, images and prices.
+
+Notes:
+- This is a minimal, static-store + Stripe Checkout flow. No backend product DB included.
+- If you want a complete admin panel, inventory, search, or order dashboard, I can add that next.
+
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chandan Nature Hurbs — Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* small custom styles */
+    .product-img{aspect-ratio:1/1;object-fit:cover}
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <header class="bg-white shadow">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-4">
+        <img src="https://via.placeholder.com/56x56.png?text=CNH" alt="logo" class="w-14 h-14 rounded-md object-cover">
+        <div>
+          <h1 class="text-xl font-semibold">Chandan Nature Hurbs</h1>
+          <p class="text-sm text-gray-500">Natural • Herbal • Trusted</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <input id="search" placeholder="Search products..." class="px-3 py-2 border rounded-md" />
+        <button id="cartBtn" class="relative bg-green-600 text-white px-4 py-2 rounded-md">Cart <span id="cartCount" class="ml-2 inline-block bg-white text-green-600 rounded-full px-2">0</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <section class="mb-8">
+      <div class="bg-gradient-to-r from-green-100 to-white p-6 rounded-lg">
+        <h2 class="text-2xl font-bold">Welcome to our herbal store</h2>
+        <p class="mt-2 text-gray-600">Handmade, ayurvedic-inspired remedies crafted with care. Free shipping on orders above ₹999.</p>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="text-xl font-semibold mb-4">Products</h3>
+      <div id="productsGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+    </section>
+  </main>
+
+  <!-- Cart modal -->
+  <div id="cartModal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-end md:items-center justify-center">
+    <div class="bg-white w-full md:w-3/4 lg:w-1/2 p-6 rounded-t-lg md:rounded-lg">
+      <div class="flex justify-between items-center mb-4">
+        <h4 class="text-lg font-semibold">Your cart</h4>
+        <button id="closeCart" class="text-gray-600">Close</button>
+      </div>
+      <div id="cartItems" class="space-y-4 max-h-64 overflow-auto"></div>
+      <div class="mt-6 flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-600">Shipping: Calculated at checkout</p>
+          <p id="cartTotal" class="text-xl font-bold mt-1">Total: ₹0</p>
+        </div>
+        <div class="space-x-2">
+          <button id="clearCart" class="px-4 py-2 border rounded-md">Clear</button>
+          <button id="checkoutBtn" class="px-4 py-2 bg-green-600 text-white rounded-md">Checkout</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-12 bg-white border-t">
+    <div class="max-w-6xl mx-auto px-6 py-6 text-sm text-gray-600">© Chandan Nature Hurbs — All rights reserved.</div>
+  </footer>
+
+  <script>
+    // --- SAMPLE PRODUCTS ---
+    const products = [
+      {
+        id: 'cn-001',
+        title: 'Chandan Herbal Oil – 100ml',
+        price: 29900, // price in paise (₹299.00)
+        img: 'https://via.placeholder.com/400x400.png?text=Herbal+Oil',
+        desc: 'Cooling sandalwood-infused herbal oil for skin and relaxation.'
+      },
+      {
+        id: 'cn-002',
+        title: 'Natural Turmeric Soap',
+        price: 14900,
+        img: 'https://via.placeholder.com/400x400.png?text=Turmeric+Soap',
+        desc: 'Handmade turmeric soap for bright, healthy skin.'
+      },
+      {
+        id: 'cn-003',
+        title: 'Ayurvedic Digestive Tea',
+        price: 19900,
+        img: 'https://via.placeholder.com/400x400.png?text=Digestive+Tea',
+        desc: 'Blend of fennel, ginger and ajwain to aid digestion.'
+      },
+      {
+        id: 'cn-004',
+        title: 'Herbal Hair Serum',
+        price: 34900,
+        img: 'https://via.placeholder.com/400x400.png?text=Hair+Serum',
+        desc: 'Nourishing serum with bhringraj & amla.'
+      }
+    ];
+
+    // cart: { productId: qty }
+    let cart = {};
+
+    const productsGrid = document.getElementById('productsGrid');
+    const cartBtn = document.getElementById('cartBtn');
+    const cartModal = document.getElementById('cartModal');
+    const closeCart = document.getElementById('closeCart');
+    const cartItems = document.getElementById('cartItems');
+    const cartCount = document.getElementById('cartCount');
+    const cartTotal = document.getElementById('cartTotal');
+    const checkoutBtn = document.getElementById('checkoutBtn');
+    const clearCartBtn = document.getElementById('clearCart');
+    const searchInput = document.getElementById('search');
+
+    function formatRupees(paise){
+      return '₹' + (paise/100).toFixed(2);
+    }
+
+    function renderProducts(list){
+      productsGrid.innerHTML = '';
+      list.forEach(p => {
+        const card = document.createElement('article');
+        card.className = 'bg-white rounded-lg shadow overflow-hidden';
+        card.innerHTML = `
+          <img src="${p.img}" alt="${p.title}" class="product-img w-full">
+          <div class="p-4">
+            <h4 class="font-semibold">${p.title}</h4>
+            <p class="text-sm text-gray-500 mt-1">${p.desc}</p>
+            <div class="mt-4 flex items-center justify-between">
+              <div class="text-lg font-bold">${formatRupees(p.price)}</div>
+              <button data-id="${p.id}" class="addBtn px-3 py-2 bg-green-600 text-white rounded-md">Add</button>
+            </div>
+          </div>
+        `;
+        productsGrid.appendChild(card);
+      });
+      attachAddHandlers();
+    }
+
+    function attachAddHandlers(){
+      document.querySelectorAll('.addBtn').forEach(btn=>{
+        btn.onclick = ()=>{
+          const id = btn.dataset.id;
+          cart[id] = (cart[id] || 0) + 1;
+          updateCartUI();
+        }
+      })
+    }
+
+    function updateCartUI(){
+      const qty = Object.values(cart).reduce((s,x)=>s+x,0);
+      cartCount.textContent = qty;
+      cartItems.innerHTML = '';
+      let total = 0;
+      Object.keys(cart).forEach(id=>{
+        const p = products.find(x=>x.id===id);
+        const q = cart[id];
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between';
+        row.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <img src="${p.img}" class="w-16 h-16 object-cover rounded">
+            <div>
+              <div class="font-semibold">${p.title}</div>
+              <div class="text-sm text-gray-500">${formatRupees(p.price)} x ${q}</div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button data-id="${id}" class="decBtn px-2 py-1 border rounded">-</button>
+            <div>${q}</div>
+            <button data-id="${id}" class="incBtn px-2 py-1 border rounded">+</button>
+          </div>
+        `;
+        cartItems.appendChild(row);
+        total += p.price * q;
+      });
+      cartTotal.textContent = 'Total: ' + formatRupees(total);
+      // attach inc/dec
+      document.querySelectorAll('.incBtn').forEach(b=>b.onclick=()=>{cart[b.dataset.id]++; updateCartUI()});
+      document.querySelectorAll('.decBtn').forEach(b=>{b.onclick=()=>{ const id=b.dataset.id; cart[id]--; if(cart[id]<=0) delete cart[id]; updateCartUI(); }});
+    }
+
+    cartBtn.onclick = ()=>{ cartModal.classList.remove('hidden'); cartModal.classList.add('flex'); };
+    closeCart.onclick = ()=>{ cartModal.classList.add('hidden'); cartModal.classList.remove('flex'); };
+    clearCartBtn.onclick = ()=>{ cart = {}; updateCartUI(); };
+
+    // Basic search
+    searchInput.addEventListener('input', ()=>{
+      const q = searchInput.value.trim().toLowerCase();
+      const filtered = products.filter(p=>p.title.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q));
+      renderProducts(filtered);
+    });
+
+    // Checkout flow (requires server-side create-checkout-session endpoint)
+    checkoutBtn.onclick = async ()=>{
+      if(Object.keys(cart).length===0){ alert('Cart is empty'); return; }
+      // Prepare line items for server
+      const line_items = Object.keys(cart).map(id=>{
+        const p = products.find(x=>x.id===id);
+        return { price_data: { currency: 'inr', product_data: { name: p.title }, unit_amount: p.price }, quantity: cart[id] };
+      });
+
+      // IMPORTANT: You MUST replace /create-checkout-session with your server endpoint that calls Stripe secret key.
+      // Example server (Node/Express) expects JSON { line_items }
+      // Response: { url: 'https://checkout.stripe.com/s/...' }
+
+      try{
+        const res = await fetch('/create-checkout-session', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ line_items })
+        });
+        if(!res.ok) throw new Error('Checkout session failed');
+        const data = await res.json();
+        // redirect to Stripe Checkout
+        window.location = data.url;
+      }catch(e){
+        console.error(e);
+        alert('Unable to start checkout. See developer console.');
+      }
+    };
+
+    // initial render
+    renderProducts(products);
+
+    // Developer tip (to test without server): uncomment below to simulate checkout redirect
+    // checkoutBtn.onclick = ()=>{ window.location = 'https://example.com/thank-you'; }
+  </script>
+
+  <!-- README / Deployment notes tucked in HTML comments or provide separately when editing -->
+</body>
+</html>
